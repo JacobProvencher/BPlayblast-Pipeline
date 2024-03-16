@@ -1526,5 +1526,3 @@ if __name__ == "__main__":
     zurbrigg_playblast_dialog.show()
 
 
-
-

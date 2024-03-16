@@ -1,7 +1,10 @@
 import os
 import sys
 import traceback
+import copy
+
 from PySide2 import QtCore, QtGui
+
 import maya.cmds as cmds
 import maya.mel as mel
 import maya.OpenMaya as om
@@ -101,7 +104,7 @@ class BPlayblast(QtCore.QObject):
         ["Selection Highlighting", "sel"],
     ]
 
-    VIEWPORT_VISIBILITY_PRESET = {
+    VIEWPORT_VISIBILITY_PRESETS = {
         "Viewport": [],
         "Geo": ["NURBS Surfaces", "Polygons"],
         "Dynamics": ["NURBS Surfaces", "Polygons", "Dynamics", "Fluids", "nParticles"]
@@ -123,6 +126,8 @@ class BPlayblast(QtCore.QObject):
         self.set_encoding(BPlayblast.DEFAULT_CONTAINER, BPlayblast.DEFAULT_ENCODER)
         self.set_h264_settings(BPlayblast.DEFAULT_H264_QUALITY, BPlayblast.DEFAULT_H264_PRESET)
         self.set_image_settings(BPlayblast.DEFAULT_IMAGE_QUALITY)
+
+        self.set_visibility(BPlayblast.DEFAULT_VISIBILITY)
 
         self.initialize_ffmpeg_process()
 
@@ -338,6 +343,40 @@ class BPlayblast(QtCore.QObject):
         
         return (start_frame, end_frame)
     
+    def set_visibility(self, visibility_data):
+        if not visibility_data:
+            visibility_data = []
+        
+        if not type(visibility_data) in [list, tuple]:
+            visibility_data = self.preset_to_visibility(visibility_data)
+
+            if visibility_data is None:
+                return
+            
+        self._visibility = copy.copy(visibility_data)
+            
+
+    def get_visibility(self):
+        if not self._visibility:
+            return self.get_viewport_visibility()
+        
+        return self._visibility
+
+    def preset_to_visibility(self, visibility_preset):
+        if not visibility_preset in BPlayblast.VIEWPORT_VISIBILITY_PRESETS.keys():
+            self.log_error(f"Invalid visibility preset: {visibility_preset}")
+            return None
+
+        preset_names = BPlayblast.VIEWPORT_VISIBILITY_PRESETS[visibility_preset]
+
+        visibility_data = []
+
+        if preset_names:
+            for lookup_item in BPlayblast.VIEWPORT_VISIBILITY_LOOKUP:
+                visibility_data.append(lookup_item[0] in preset_names)
+
+        return visibility_data
+    
     def set_encoding(self, container_format, encoder):
         if container_format not in (containers := BPlayblast.VIDEO_ENCODER_LOOKUP.keys()):
             self.log_error(f"Invalid container: {container_format}. Expected one of {containers}")
@@ -463,7 +502,7 @@ class BPlayblast(QtCore.QObject):
 
         data_index = 0
         for item in BPlayblast.VIEWPORT_VISIBILITY_LOOKUP:
-            visibility_flags[item[1]] = visibility_data
+            visibility_flags[item[1]] = visibility_data[data_index]
             data_index += 1
 
         return visibility_flags
@@ -579,6 +618,12 @@ class BPlayblast(QtCore.QObject):
         
         self.set_active_camera(camera)
 
+        orig_visibility_flags = self.create_viewport_visibility_flags(self.get_viewport_visibility())
+        playblast_visibility_flags = self.create_viewport_visibility_flags(self.get_visibility())
+
+        model_editor = cmds.modelPanel(viewport_model_panel, q=True, modelEditor=True)
+        self.set_viewport_visibility(model_editor, playblast_visibility_flags)
+
         playblast_failed = False
         try:
             cmds.playblast(**options)
@@ -589,6 +634,7 @@ class BPlayblast(QtCore.QObject):
         finally:
             # Restore original viewport settings
             self.set_active_camera(orig_camera)
+            self.set_viewport_visibility(model_editor, orig_visibility_flags)
 
         if playblast_failed:
             return
@@ -612,7 +658,6 @@ class BPlayblast(QtCore.QObject):
 if __name__ == "__main__":
 
     playblast = BPlayblast()
-    playblast.set_camera("rendercam")
-    #playblast.set_encoding("Image", "jpg")
-    playblast.execute("E:/BASA/test", "output")
+    playblast.set_visibility("Geo")
+    playblast.execute("E:/CODING/tests", "output", overwrite=True)
 
