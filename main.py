@@ -17,7 +17,7 @@ class BPlayblast(QtCore.QObject):
 
     VERSION = "0.0.1"
 
-    DEFAULT_FFMPEG_PATH = "D:/programs/ffmpeg/bin/ffmpeg.exe"
+    DEFAULT_FFMPEG_PATH = ""
     DEFAULT_CAMERA = None
     DEFAULT_RESOLUTION = "Render"
     DEFAULT_FRAME_RANGE = "Render"
@@ -657,6 +657,60 @@ class BPlayblast(QtCore.QObject):
             if show_in_viewer:
                 self.open_in_viewer(output_path)
 
+class BPlayblastSettingsDialog(QtWidgets.QDialog):
+
+    def __init__(self, parent):
+        super(BPlayblastSettingsDialog, self).__init__(parent)
+
+        self.setWindowTitle("Settings")
+        self.setWindowFlags(self.windowFlags() ^ QtCore.Qt.WindowContextHelpButtonHint)
+        self.setMinimumWidth(360)
+        self.setModal(True)
+
+        self.ffmpeg_path_le = QtWidgets.QLineEdit()
+        self.ffmpeg_path_select_btn = QtWidgets.QPushButton("...")
+        self.ffmpeg_path_select_btn.setFixedSize(24, 19)
+        self.ffmpeg_path_select_btn.clicked.connect(self.select_ffmpeg_executable)
+
+        ffmpeg_layout = QtWidgets.QHBoxLayout()
+        ffmpeg_layout.setSpacing(4)
+        ffmpeg_layout.addWidget(self.ffmpeg_path_le)
+        ffmpeg_layout.addWidget(self.ffmpeg_path_select_btn)
+
+        ffmpeg_grp = QtWidgets.QGroupBox("FFmpeg Path")
+        ffmpeg_grp.setLayout(ffmpeg_layout)
+
+        self.accept_btn = QtWidgets.QPushButton("Accept")
+        self.accept_btn.clicked.connect(self.accept)
+
+        self.cancel_btn = QtWidgets.QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self.close)
+
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.accept_btn)
+        button_layout.addWidget(self.cancel_btn)
+
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(4)
+        main_layout.addWidget(ffmpeg_grp)
+        main_layout.addStretch()
+        main_layout.addLayout(button_layout)
+
+    def set_ffmpeg_path(self, path):
+        self.ffmpeg_path_le.setText(path)
+
+    def get_ffmpeg_path(self):
+        return self.ffmpeg_path_le.text()
+
+    def select_ffmpeg_executable(self):
+        current_path = self.ffmpeg_path_le.text()
+
+        new_path = QtWidgets.QFileDialog.getOpenFileName(self, "Select FFmpeg Executable", current_path)[0]
+        if new_path:
+            self.ffmpeg_path_le.setText(new_path)
+
 class BPlayblastUi(QtWidgets.QDialog):
 
     TITLE = "BPlayblast"
@@ -674,12 +728,19 @@ class BPlayblastUi(QtWidgets.QDialog):
         self.setWindowFlags(self.windowFlags() ^ QtCore.Qt.WindowContextHelpButtonHint)
         self.setMinimumWidth(500)
 
+        self._playblast = BPlayblast()
+
+        self.load_settings()
+
+        self._settings_dialog = None
+
         self.create_actions()
         self.create_menus()
         self.create_widgets()
         self.create_layout()
         self.create_connections()
 
+        self.append_output(f"BPlayblast v{BPlayblast.VERSION}")
 
     def create_actions(self):
         self.save_defaults_action = QtWidgets.QAction("Save Defaults", self)
@@ -889,8 +950,24 @@ class BPlayblastUi(QtWidgets.QDialog):
         self.playblast_btn.clicked.connect(self.do_playblast)
         self.close_btn.clicked.connect(self.close)
 
+        self._playblast.output_logged.connect(self.append_output)
+
     def do_playblast(self):
-        print("TODO: do_playblast()")
+        output_dir_path = self.output_dir_path_le.text()
+        if not output_dir_path:
+            output_dir_path = self.output_dir_path_le.placeholderText()
+
+        filename = self.output_filename_le.text()
+        if not filename:
+            filename = self.output_filename_le.placeholderText()
+
+        padding = BPlayblast.DEFAULT_PADDING
+
+        show_ornaments = self.ornaments_cb.isChecked()
+        show_in_viewer = self.viewer_cb.isChecked()
+        overwrite = self.force_overwrite_cb.isChecked()
+
+        self._playblast.execute(output_dir_path, filename, padding, show_ornaments, show_in_viewer, overwrite)
 
     def select_output_directory(self):
         print("TODO: select_output_directory()")
@@ -941,10 +1018,11 @@ class BPlayblastUi(QtWidgets.QDialog):
         print("TODO: on_visibility_dialog_modified()")
 
     def save_settings(self):
-        print("TODO: save_settings()")
+        cmds.optionVar(sv=("BPlayblastUiFFmpegPath", self._playblast.get_ffmpeg_path()))
 
     def load_settings(self):
-        print("TODO: load_settings()")
+        if cmds.optionVar(exists="BPlayblastUiFFmpegPath"):
+            self._playblast.set_ffmpeg_path(cmds.optionVar(q="BPlayblastUiFFmpegPath"))
 
     def save_defaults(self):
         print("TODO: save_defaults()")
@@ -953,23 +1031,45 @@ class BPlayblastUi(QtWidgets.QDialog):
         print("TODO: load_defaults()")
 
     def show_settings_dialog(self):
-        print("TODO: show_settings_dialog()")
+        if not self._settings_dialog:
+            self._settings_dialog = BPlayblastSettingsDialog(self)
+            self._settings_dialog.accepted.connect(self.on_settings_dialog_modified)
+
+        self._settings_dialog.set_ffmpeg_path(self._playblast.get_ffmpeg_path())
+
+        self._settings_dialog.show()
 
     def on_settings_dialog_modified(self):
-        print("TODO: on_settings_dialog_modified()")
+        ffmpeg_path = self._settings_dialog.get_ffmpeg_path()
+        self._playblast.set_ffmpeg_path(ffmpeg_path)
+
+        self.save_settings()
 
     def show_about_dialog(self):
         text = '<h2>{0}</h2>'.format(BPlayblastUi.TITLE)
         text += '<p>Version: {0}</p>'.format(BPlayblast.VERSION)
         text += '<p>Author: Jacob Provencher</p>'
-        text += '<p>Website: <a style="color:white;" href="http://zurbrigg.com">zurbrigg.com</a></p><br>'
+        text += '<p>Website: <a style="color:white;" href="https://jacprovjp.wixsite.com/portfolio">jacobprovencher.com</a></p><br>'
 
         QtWidgets.QMessageBox().about(self, "About", "{0}".format(text))
 
+    def append_output(self, text):
+        self.output_edit.appendPlainText(text)
+
+    def keyPressEvent(self, event):
+        super(BPlayblastUi, self).keyPressEvent(event)
+        event.accept()
 
 
 if __name__ == "__main__":
 
-    zurbrigg_playblast_dialog = BPlayblastUi()
-    zurbrigg_playblast_dialog.show()
+    try:
+        jacob_playblast_dialog.close() # pylint: disable=E0601
+        jacob_playblast_dialog.deleteLater()
+    except:
+        pass
+
+    jacob_playblast_dialog = BPlayblastUi()
+    jacob_playblast_dialog.show()
+
 
