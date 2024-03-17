@@ -3,11 +3,14 @@ import sys
 import traceback
 import copy
 
-from PySide2 import QtCore, QtGui
+from PySide2 import QtCore, QtGui, QtWidgets
+
+from shiboken2 import wrapInstance
 
 import maya.cmds as cmds
 import maya.mel as mel
 import maya.OpenMaya as om
+import maya.OpenMayaUI as omui
 
 
 class BPlayblast(QtCore.QObject):
@@ -654,10 +657,319 @@ class BPlayblast(QtCore.QObject):
             if show_in_viewer:
                 self.open_in_viewer(output_path)
 
+class BPlayblastUi(QtWidgets.QDialog):
+
+    TITLE = "BPlayblast"
+
+
+    def __init__(self):
+        if sys.version_info.major < 3:
+            maya_main_window = wrapInstance(long(omui.MQtUtil.mainWindow()), QtWidgets.QWidget)
+        else:
+            maya_main_window = wrapInstance(int(omui.MQtUtil.mainWindow()), QtWidgets.QWidget)
+
+        super(BPlayblastUi, self).__init__(maya_main_window)
+
+        self.setWindowTitle(BPlayblastUi.TITLE)
+        self.setWindowFlags(self.windowFlags() ^ QtCore.Qt.WindowContextHelpButtonHint)
+        self.setMinimumWidth(500)
+
+        self.create_actions()
+        self.create_menus()
+        self.create_widgets()
+        self.create_layout()
+        self.create_connections()
+
+
+    def create_actions(self):
+        self.save_defaults_action = QtWidgets.QAction("Save Defaults", self)
+        self.save_defaults_action.triggered.connect(self.save_defaults)
+
+        self.load_defaults_action = QtWidgets.QAction("Load Defaults", self)
+        self.load_defaults_action.triggered.connect(self.load_defaults)
+
+        self.show_settings_action = QtWidgets.QAction("Settings...", self)
+        self.show_settings_action.triggered.connect(self.show_settings_dialog)
+
+        self.show_about_action = QtWidgets.QAction("About", self)
+        self.show_about_action.triggered.connect(self.show_about_dialog)
+
+    def create_menus(self):
+        self.main_menu = QtWidgets.QMenuBar()
+
+        edit_menu = self.main_menu.addMenu("Edit")
+        edit_menu.addAction(self.save_defaults_action)
+        edit_menu.addAction(self.load_defaults_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.show_settings_action)
+
+        help_menu = self.main_menu.addMenu("Help")
+        help_menu.addAction(self.show_about_action)
+
+    def create_widgets(self):
+        self.output_dir_path_le = QtWidgets.QLineEdit()
+        self.output_dir_path_le.setPlaceholderText("{project}/movies")
+
+        self.output_dir_path_select_btn = QtWidgets.QPushButton("...")
+        self.output_dir_path_select_btn.setFixedSize(24, 19)
+        self.output_dir_path_select_btn.setToolTip("Select Output Directory")
+
+        self.output_dir_path_show_folder_btn = QtWidgets.QPushButton(QtGui.QIcon(":fileOpen.png"), "")
+        self.output_dir_path_show_folder_btn.setFixedSize(24, 19)
+        self.output_dir_path_show_folder_btn.setToolTip("Show in Folder")
+
+        self.output_filename_le = QtWidgets.QLineEdit()
+        self.output_filename_le.setPlaceholderText("{scene}")
+        self.output_filename_le.setMaximumWidth(200)
+        self.force_overwrite_cb = QtWidgets.QCheckBox("Force overwrite")
+
+        self.resolution_select_cmb = QtWidgets.QComboBox()
+
+        self.resolution_width_sb = QtWidgets.QSpinBox()
+        self.resolution_width_sb.setButtonSymbols(QtWidgets.QSpinBox.NoButtons)
+        self.resolution_width_sb.setRange(1, 9999)
+        self.resolution_width_sb.setMinimumWidth(40)
+        self.resolution_width_sb.setAlignment(QtCore.Qt.AlignRight)
+        self.resolution_height_sb = QtWidgets.QSpinBox()
+        self.resolution_height_sb.setButtonSymbols(QtWidgets.QSpinBox.NoButtons)
+        self.resolution_height_sb.setRange(1, 9999)
+        self.resolution_height_sb.setMinimumWidth(40)
+        self.resolution_height_sb.setAlignment(QtCore.Qt.AlignRight)
+
+        self.camera_select_cmb = QtWidgets.QComboBox()
+        self.camera_select_hide_defaults_cb = QtWidgets.QCheckBox("Hide defaults")
+
+        self.frame_range_cmb = QtWidgets.QComboBox()
+
+        self.frame_range_start_sb = QtWidgets.QSpinBox()
+        self.frame_range_start_sb.setButtonSymbols(QtWidgets.QSpinBox.NoButtons)
+        self.frame_range_start_sb.setRange(-9999, 9999)
+        self.frame_range_start_sb.setMinimumWidth(40)
+        self.frame_range_start_sb.setAlignment(QtCore.Qt.AlignRight)
+
+        self.frame_range_end_sb = QtWidgets.QSpinBox()
+        self.frame_range_end_sb.setButtonSymbols(QtWidgets.QSpinBox.NoButtons)
+        self.frame_range_end_sb.setRange(-9999, 9999)
+        self.frame_range_end_sb.setMinimumWidth(40)
+        self.frame_range_end_sb.setAlignment(QtCore.Qt.AlignRight)
+
+        self.encoding_container_cmb = QtWidgets.QComboBox()
+
+        self.encoding_video_codec_cmb = QtWidgets.QComboBox()
+        self.encoding_video_codec_settings_btn = QtWidgets.QPushButton("Settings...")
+        self.encoding_video_codec_settings_btn.setFixedHeight(19)
+
+        self.visibility_cmb = QtWidgets.QComboBox()
+
+        self.visibility_customize_btn = QtWidgets.QPushButton("Customize...")
+        self.visibility_customize_btn.setFixedHeight(19)
+
+        self.ornaments_cb = QtWidgets.QCheckBox()
+        self.ornaments_cb.setChecked(True)
+
+        self.viewer_cb = QtWidgets.QCheckBox()
+        self.viewer_cb.setChecked(True)
+
+        self.output_edit = QtWidgets.QPlainTextEdit()
+        self.output_edit.setReadOnly(True)
+        self.output_edit.setWordWrapMode(QtGui.QTextOption.NoWrap)
+
+        self.refresh_btn = QtWidgets.QPushButton("Refresh")
+        self.clear_btn = QtWidgets.QPushButton("Clear")
+        self.playblast_btn = QtWidgets.QPushButton("Playblast")
+        self.close_btn = QtWidgets.QPushButton("Close")
+
+    def create_layout(self):
+        output_path_layout = QtWidgets.QHBoxLayout()
+        output_path_layout.setSpacing(4)
+        output_path_layout.addWidget(self.output_dir_path_le)
+        output_path_layout.addWidget(self.output_dir_path_select_btn)
+        output_path_layout.addWidget(self.output_dir_path_show_folder_btn)
+
+        output_file_layout = QtWidgets.QHBoxLayout()
+        output_file_layout.setSpacing(4)
+        output_file_layout.addWidget(self.output_filename_le)
+        output_file_layout.addWidget(self.force_overwrite_cb)
+
+        output_layout = QtWidgets.QFormLayout()
+        output_layout.setSpacing(4)
+        output_layout.addRow("Directory:", output_path_layout)
+        output_layout.addRow("Filename:", output_file_layout)
+
+        output_grp = QtWidgets.QGroupBox("Output")
+        output_grp.setLayout(output_layout)
+
+        camera_options_layout = QtWidgets.QHBoxLayout()
+        camera_options_layout.setSpacing(4)
+        camera_options_layout.addWidget(self.camera_select_cmb)
+        camera_options_layout.addWidget(self.camera_select_hide_defaults_cb)
+
+        resolution_layout = QtWidgets.QHBoxLayout()
+        resolution_layout.setSpacing(4)
+        resolution_layout.addWidget(self.resolution_select_cmb)
+        resolution_layout.addWidget(self.resolution_width_sb)
+        resolution_layout.addWidget(QtWidgets.QLabel("x"))
+        resolution_layout.addWidget(self.resolution_height_sb)
+
+        frame_range_layout = QtWidgets.QHBoxLayout()
+        frame_range_layout.setSpacing(4)
+        frame_range_layout.addWidget(self.frame_range_cmb)
+        frame_range_layout.addWidget(self.frame_range_start_sb)
+        frame_range_layout.addWidget(self.frame_range_end_sb)
+
+        encoding_layout = QtWidgets.QHBoxLayout()
+        encoding_layout.setSpacing(4)
+        encoding_layout.addWidget(self.encoding_container_cmb)
+        encoding_layout.addWidget(self.encoding_video_codec_cmb)
+        encoding_layout.addWidget(self.encoding_video_codec_settings_btn)
+
+        visibility_layout = QtWidgets.QHBoxLayout()
+        visibility_layout.setSpacing(4)
+        visibility_layout.addWidget(self.visibility_cmb)
+        visibility_layout.addWidget(self.visibility_customize_btn)
+
+        options_layout = QtWidgets.QFormLayout()
+        options_layout.addRow("Camera:", camera_options_layout)
+        options_layout.addRow("Resolution:", resolution_layout)
+        options_layout.addRow("Frame Range:", frame_range_layout)
+        options_layout.addRow("Encoding:", encoding_layout)
+        options_layout.addRow("Visiblity:", visibility_layout)
+        options_layout.addRow("Ornaments:", self.ornaments_cb)
+        options_layout.addRow("Show in Viewer:", self.viewer_cb)
+
+        options_grp = QtWidgets.QGroupBox("Options")
+        options_grp.setLayout(options_layout)
+
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addWidget(self.refresh_btn)
+        button_layout.addWidget(self.clear_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(self.playblast_btn)
+        button_layout.addWidget(self.close_btn)
+
+        status_bar_layout = QtWidgets.QHBoxLayout()
+        status_bar_layout.addStretch()
+        status_bar_layout.addWidget(QtWidgets.QLabel("v{0}".format(BPlayblast.VERSION)))
+
+
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(4)
+        main_layout.setMenuBar(self.main_menu)
+        main_layout.addWidget(output_grp)
+        main_layout.addWidget(options_grp)
+        main_layout.addWidget(self.output_edit)
+        main_layout.addLayout(button_layout)
+        main_layout.addLayout(status_bar_layout)
+
+    def create_connections(self):
+        self.output_dir_path_select_btn.clicked.connect(self.select_output_directory)
+        self.output_dir_path_show_folder_btn.clicked.connect(self.open_output_directory)
+
+        self.camera_select_cmb.currentTextChanged.connect(self.on_camera_changed)
+        self.camera_select_hide_defaults_cb.toggled.connect(self.refresh_cameras)
+
+        self.frame_range_cmb.currentTextChanged.connect(self.refresh_frame_range)
+        self.frame_range_start_sb.valueChanged.connect(self.on_frame_range_changed)
+        self.frame_range_end_sb.valueChanged.connect(self.on_frame_range_changed)
+
+        self.encoding_container_cmb.currentTextChanged.connect(self.refresh_video_encoders)
+        self.encoding_video_codec_cmb.currentTextChanged.connect(self.on_video_encoder_changed)
+        self.encoding_video_codec_settings_btn.clicked.connect(self.show_encoder_settings_dialog)
+
+        self.resolution_select_cmb.currentTextChanged.connect(self.refresh_resolution)
+        self.resolution_width_sb.valueChanged.connect(self.on_resolution_changed)
+        self.resolution_height_sb.valueChanged.connect(self.on_resolution_changed)
+
+        self.visibility_cmb.currentTextChanged.connect(self.on_visibility_preset_changed)
+        self.visibility_customize_btn.clicked.connect(self.show_visibility_dialog)
+
+        self.refresh_btn.clicked.connect(self.refresh)
+        self.clear_btn.clicked.connect(self.output_edit.clear)
+        self.playblast_btn.clicked.connect(self.do_playblast)
+        self.close_btn.clicked.connect(self.close)
+
+    def do_playblast(self):
+        print("TODO: do_playblast()")
+
+    def select_output_directory(self):
+        print("TODO: select_output_directory()")
+
+    def open_output_directory(self):
+        print("TODO: open_output_directory()")
+
+    def refresh(self):
+        print("TODO: refresh()")
+
+    def refresh_cameras(self):
+        print("TODO: refresh_cameras()")
+
+    def on_camera_changed(self):
+        print("TODO: on_camera_changed()")
+
+    def refresh_resolution(self):
+        print("TODO: refresh_resolution()")
+
+    def on_resolution_changed(self):
+        print("TODO: on_resolution_changed()")
+
+    def refresh_frame_range(self):
+        print("TODO: refresh_frame_range()")
+
+    def on_frame_range_changed(self):
+        print("TODO: on_frame_range_changed()")
+
+    def refresh_video_encoders(self):
+        print("TODO: refresh_video_encoders()")
+
+    def on_video_encoder_changed(self):
+        print("TODO: on_video_encoder_changed()")
+
+    def show_encoder_settings_dialog(self):
+        print("TODO: show_encoder_settings_dialog()")
+
+    def on_encoder_settings_dialog_modified(self):
+        print("TODO: on_encoder_settings_dialog_modified()")
+
+    def on_visibility_preset_changed(self):
+        print("TODO: on_visibility_preset_changed()")
+
+    def show_visibility_dialog(self):
+        print("TODO: show_visibility_dialog()")
+
+    def on_visibility_dialog_modified(self):
+        print("TODO: on_visibility_dialog_modified()")
+
+    def save_settings(self):
+        print("TODO: save_settings()")
+
+    def load_settings(self):
+        print("TODO: load_settings()")
+
+    def save_defaults(self):
+        print("TODO: save_defaults()")
+
+    def load_defaults(self):
+        print("TODO: load_defaults()")
+
+    def show_settings_dialog(self):
+        print("TODO: show_settings_dialog()")
+
+    def on_settings_dialog_modified(self):
+        print("TODO: on_settings_dialog_modified()")
+
+    def show_about_dialog(self):
+        text = '<h2>{0}</h2>'.format(BPlayblastUi.TITLE)
+        text += '<p>Version: {0}</p>'.format(BPlayblast.VERSION)
+        text += '<p>Author: Jacob Provencher</p>'
+        text += '<p>Website: <a style="color:white;" href="http://zurbrigg.com">zurbrigg.com</a></p><br>'
+
+        QtWidgets.QMessageBox().about(self, "About", "{0}".format(text))
+
+
 
 if __name__ == "__main__":
 
-    playblast = BPlayblast()
-    playblast.set_visibility("Geo")
-    playblast.execute("E:/CODING/tests", "output", overwrite=True)
+    zurbrigg_playblast_dialog = BPlayblastUi()
+    zurbrigg_playblast_dialog.show()
 
