@@ -3,4 +3,4 @@
 
 
 
-![Diagramme sans nom drawio (1)](https://github.com/JacobProvencher/BPlayblast-Pipeline/assets/159086368/3c0a861f-d2ee-4b51-bd05-26cd670c706a)
+![Diagramme sans nom drawio (2)](https://github.com/JacobProvencher/BPlayblast-Pipeline/assets/159086368/04c140b1-7067-4a28-931a-0c762f9bd3f0)
